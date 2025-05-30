@@ -2,6 +2,31 @@
 
 const char kWindowTitle[] = "LE2D_08_オオノ_ユウキ";
 
+struct Vector3 
+{
+	float x;
+	float y;
+	float z;
+};
+
+struct Matrix4x4 
+{
+	float m[4][4];
+};
+
+
+//クロス積
+Vector3 Cross(const Vector3& v1, const Vector3& v2);
+
+
+
+
+
+
+Vector3 v1{1.2f, -3.9f, 2.5f};
+Vector3 v2{2.8f, 0.4f, -1.3f};
+Vector3 cross = Cross(v1, v2);
+
 // Windowsアプリでのエントリーポイント(main関数)
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
