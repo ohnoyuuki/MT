@@ -21,6 +21,13 @@ struct Sphere {
 	float radius;   //!< 半径
 };
 
+struct Plane{
+	Vector3 normal;//法線
+	float distance;//距離
+
+};
+
+
 // 長さ (ノルム)
 float Length(const Vector3& v) {
 	float result = sqrtf((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
