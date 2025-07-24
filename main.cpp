@@ -16,9 +16,8 @@ struct Matrix4x4 {
 	float m[4][4];
 };
 
-struct Plane {
-	Vector3 normal; //!< 法線
-	float distance; //!< 距離
+struct Triangle {
+	Vector3 vertices[3]; //!< 頂点
 };
 
 struct Segment {
@@ -70,6 +69,10 @@ float Length(const Vector3& v) {
 // 正規化
 Vector3 Normalize(const Vector3& v) {
 	float length = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+	if (length < 0.000001f) {
+		// 長さ0ならゼロベクトルを返す
+		return {0.0f, 0.0f, 0.0f};
+	}
 	return {v.x / length, v.y / length, v.z / length};
 }
 
@@ -471,52 +474,84 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 	}
 }
 
-void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix) {
-	Vector3 center = Multiply(plane.distance, plane.normal); // 1
-	Vector3 perpendiculars[4]{};
-	perpendiculars[0] = Normalize(Perpendicular(plane.normal));                             // 2
-	perpendiculars[1] = {-perpendiculars[0].x, -perpendiculars[0].y, -perpendiculars[0].z}; // 3
-	perpendiculars[2] = Cross(plane.normal, perpendiculars[0]);                             // 4
-	perpendiculars[3] = {-perpendiculars[2].x, -perpendiculars[2].y, -perpendiculars[2].z}; // 5
-	// 6
-	Vector3 points[4]{};
-	for (int32_t index = 0; index < 4; ++index) {
+void DrawTriangle(const Triangle& triangle, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix) {
 
-		Vector3 extend = Multiply(2.0f, perpendiculars[index]);
-		Vector3 point = Add(center, extend);
-		points[index] = Transform(Transform(point, viewProjectionMatrix), viewportMatrix);
+	Vector3 screenVertices[3];
+	for (int i = 0; i < 3; i++) {
+		Vector3 ndcVertex = Transform(triangle.vertices[i], viewProjectionMatrix);
+		screenVertices[i] = Transform(ndcVertex, viewportMatrix);
 	}
 
-	// pointsをそれぞれ詰んでDrawLineで矩形を描画。
-	Novice::DrawLine(int(points[0].x), int(points[0].y), int(points[3].x), int(points[3].y), 0xFFFFFFFF);
-	Novice::DrawLine(int(points[3].x), int(points[3].y), int(points[1].x), int(points[1].y), 0xFFFFFFFF);
-	Novice::DrawLine(int(points[1].x), int(points[1].y), int(points[2].x), int(points[2].y), 0xFFFFFFFF);
-	Novice::DrawLine(int(points[2].x), int(points[2].y), int(points[0].x), int(points[0].y), 0xFFFFFFFF);
+	Novice::DrawLine(int(screenVertices[0].x), int(screenVertices[0].y), int(screenVertices[1].x), int(screenVertices[1].y), 0xFFFFFFFF);
+
+	Novice::DrawLine(int(screenVertices[1].x), int(screenVertices[1].y), int(screenVertices[2].x), int(screenVertices[2].y), 0xFFFFFFFF);
+
+	Novice::DrawLine(int(screenVertices[2].x), int(screenVertices[2].y), int(screenVertices[0].x), int(screenVertices[0].y), 0xFFFFFFFF);
 }
 
 #pragma endregion
 
-bool IsCollision(const Segment& segment, const Plane& plane, uint32_t& color) {
+bool IsCollision(const Triangle& triangle, const Segment& segment, uint32_t& color) {
 
-	// まず垂直判定を行うために、法線と線の内積を求める
-	float dot = Dot(plane.normal, segment.diff);
+	// 三角形の頂点
+	const Vector3& v0 = triangle.vertices[0];
+	const Vector3& v1 = triangle.vertices[1];
+	const Vector3& v2 = triangle.vertices[2];
 
-	// 垂直＝平行であるので、衝突しているはずがない
-	if (dot == 0.0f) {
+	// 三角形の法線ベクトルを求める（v0v1 × v0v2）
+	Vector3 normal = Normalize(Cross(Subtract(v1, v0), Subtract(v2, v0)));
+
+	// 線分の始点と終点
+	Vector3 p0 = segment.origin;
+	Vector3 p1 = Add(segment.origin, segment.diff);
+	Vector3 dir = Subtract(p1, p0); // 線分の方向ベクトル
+
+	// 平面の方程式: n・x + d = 0 を使って d を求める
+	float d = -Dot(normal, v0);
+
+	// 法線と線分方向ベクトルの内積
+	float denom = Dot(normal, dir);
+
+	// 平行なら衝突しない
+	if (std::abs(denom) < 1e-6f) {
+		color = 0xFFFFFFFF;
 		return false;
 	}
 
-	// tを求める
-	float t = (plane.distance - Dot(segment.origin, plane.normal)) / dot;
+	// 媒介変数 t を求める
+	float t = -(Dot(normal, p0) + d) / denom;
 
-	// tの値と線の種類によって衝突しているかを判断する
 	if (t < 0.0f || t > 1.0f) {
-		color = 0xFFFFFFFF; // 白色
-	} else {
-		color = 0xFF0000FF; // 赤色
+		color = 0xFFFFFFFF;
+		return false;
 	}
 
-	return t;
+	// 交点の座標を求める
+	Vector3 p = Add(p0, Multiply(t, dir));
+
+	// 三角形の辺ベクトル
+	Vector3 v01 = Subtract(v1, v0);
+	Vector3 v12 = Subtract(v2, v1);
+	Vector3 v20 = Subtract(v0, v2);
+
+	// 各頂点から交点pへのベクトル
+	Vector3 v0p = Subtract(p, v0);
+	Vector3 v1p = Subtract(p, v1);
+	Vector3 v2p = Subtract(p, v2);
+
+	// 各小三角形の面積ベクトル（クロス積）
+	Vector3 cross01 = Cross(v01, v0p);
+	Vector3 cross12 = Cross(v12, v1p);
+	Vector3 cross20 = Cross(v20, v2p);
+
+	// すべての小三角形の法線ベクトルが、元の三角形の法線と同じ方向なら内側
+	if (Dot(cross01, normal) >= 0.0f && Dot(cross12, normal) >= 0.0f && Dot(cross20, normal) >= 0.0f) {
+		color = 0xFF0000FF; // 衝突色（青）
+		return true;
+	} else {
+		color = 0xFFFFFFFF; // 非衝突色（白）
+		return false;
+	}
 }
 
 // Windowsアプリでのエントリーポイント(main関数)
@@ -532,20 +567,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	char keys[256] = {0};
 	char preKeys[256] = {0};
 
-	Plane plane = {
-	    {0.0f, 1.0f, 0.0f},
-        1.08f
-    };
-
 	Segment segment{
 	    {0.0f, 0.0f, 0.0f},
         {1.0f, 1.0f, 1.0f}
     };
 
-	Vector3 cameraScale{1.0f, 1.0f, 1.0f};
+	Triangle triangle = {
+	    {{0.0f, 1.0f, 0.0f}, {-1.0f, 0.1f, 0.0f}, {1.0f, 0.1f, 0.0f}}
+    };
 
-	Vector3 cameraTranslate{0.0f, 0.99f, -7.93f};
-	Vector3 cameraRotate{0.02f, 0.01f, 0.0f};
+	Vector3 cameraScale{1.0f, 1.0f, 1.0f};
+	Vector3 cameraTranslate{0.0f, 2.0f, -8.0f};
+	Vector3 cameraRotate{0.2f, 0.0f, 0.0f};
 
 	Vector3 start{0.0f, 0.0f, 0.0f};
 	Vector3 end{0.0f, 0.0f, 0.0f};
@@ -567,14 +600,19 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		ImGui::Begin("Setting");
 
-		ImGui::DragFloat3("CameraTranslate", &cameraTranslate.x, 0.01f);
-		ImGui::DragFloat3("CameraRotate", &cameraRotate.x, 0.01f);
+		ImGui::DragFloat3("Segment Origin", &segment.origin.x, 0.01f);
+		ImGui::DragFloat3("Segment Diff", &segment.diff.x, 0.01f);
 
-		ImGui::DragFloat3("segment origin", &segment.origin.x, 0.01f);
-		ImGui::DragFloat3("segment diff", &segment.diff.x, 0.01f);
+		ImGui::Separator();
+		ImGui::Text("Triangle Vertices");
+		ImGui::DragFloat3("Vertex 0", &triangle.vertices[0].x, 0.01f);
+		ImGui::DragFloat3("Vertex 1", &triangle.vertices[1].x, 0.01f);
+		ImGui::DragFloat3("Vertex 2", &triangle.vertices[2].x, 0.01f);
 
-		ImGui::DragFloat3("Plane.Normal", &plane.normal.x, 0.01f);
-		ImGui::DragFloat("Plane.distance", &plane.distance, 0.01f);
+		ImGui::Separator();
+		ImGui::Text("Camera Control");
+		ImGui::DragFloat3("Camera Translate", &cameraTranslate.x, 0.1f);
+		ImGui::DragFloat3("Camera Rotate", &cameraRotate.x, 0.01f);
 
 		ImGui::End();
 
@@ -587,7 +625,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		start = Transform(Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
 		end = Transform(Transform(Add(segment.origin, segment.diff), viewProjectionMatrix), viewportMatrix);
 
-		IsCollision(segment, plane, color);
+		IsCollision(triangle, segment, color);
 
 		///
 		/// ↑更新処理ここまで
@@ -597,9 +635,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓描画処理ここから
 		///
 
-		DrawGrid(viewProjectionMatrix, viewportMatrix);
+		DrawTriangle(triangle, viewProjectionMatrix, viewportMatrix);
 		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), color);
-		DrawPlane(plane, viewProjectionMatrix, viewportMatrix);
+		DrawGrid(viewProjectionMatrix, viewportMatrix);
 
 		///
 		/// ↑描画処理ここまで
