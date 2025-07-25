@@ -25,6 +25,8 @@ struct Segment {
 	Vector3 diff;   //!< 終点への差分ベクトル
 };
 
+
+
 #pragma region ベクトルの基本演算
 
 // 加算
