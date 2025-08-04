@@ -1,10 +1,14 @@
-const char kWindowTitle[] = "LE2D_08_オオノ_ユウキ";
 #include <Novice.h>
 #include <cassert>
 #include <cmath>
 #include <imgui.h>
 #include <numbers>
+#include<algorithm>
+#define _USE_DEFINES_MATH
+#define NOMINMAX
 
+
+const char kWindowTitle[] = "LE2D_08_オオノ_ユウキ";
 
 struct Vector3 {
 	float x, y, z;
@@ -44,6 +48,8 @@ struct AABB {
 	Vector3 max;
 };
 
+// static const int kColumnWidth = 60;
+// static const int kRowHeight = 20;
 
 // 加算
 Vector3 Add(const Vector3& v1, const Vector3& v2) {
@@ -509,8 +515,53 @@ void DrawAABB(const AABB& aabb, const Matrix4x4& viewProjectMatrix, const Matrix
 	}
 }
 
-bool IsCollision(const AABB& aabb1, const AABB& aabb2, unsigned int& color) {
-	if ((aabb1.min.x <= aabb2.max.x && aabb1.max.x >= aabb2.min.x) && (aabb1.min.y <= aabb2.max.y && aabb1.max.y >= aabb2.min.y) && (aabb1.min.z <= aabb2.max.z && aabb1.max.z >= aabb2.min.z)) {
+void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
+	const uint32_t kSubdivision = 16;
+	const float kLonEvery = 2.0f * std::numbers::pi_v<float> / float(kSubdivision); // 経度分割1つ分の角度
+	const float kLatEvery = std::numbers::pi_v<float> / float(kSubdivision);        // 緯度分割1つ分の角度
+	// 緯度の方向に分割 -0/2 - 0/2
+	for (uint32_t latIndex = 0; latIndex < kSubdivision; latIndex++) {
+		float lat = -std::numbers::pi_v<float> / 2.0f + kLatEvery * latIndex; // 現在の緯度
+		// 緯度の方向に分割 0 - 2
+		for (uint32_t lonIndex = 0; lonIndex < kSubdivision; lonIndex++) {
+			float lon = lonIndex * kLonEvery; // 現在の緯度
+			// world座標系でのa,b,cを求める
+			// Vector3 a, b, c;
+			Vector3 a = {sphere.center.x + sphere.radius * cosf(lat) * cosf(lon), sphere.center.y + sphere.radius * sinf(lat), sphere.center.z + sphere.radius * cosf(lat) * sinf(lon)};
+
+			Vector3 b = {
+			    sphere.center.x + sphere.radius * cosf(lat + kLatEvery) * cosf(lon), sphere.center.y + sphere.radius * sinf(lat + kLatEvery),
+			    sphere.center.z + sphere.radius * cosf(lat + kLatEvery) * sinf(lon)};
+
+			Vector3 c = {
+			    sphere.center.x + sphere.radius * cosf(lat) * cosf(lon + kLonEvery), sphere.center.y + sphere.radius * sinf(lat), sphere.center.z + sphere.radius * cosf(lat) * sinf(lon + kLonEvery)};
+
+			// a,b,cをScreen座標系まで変換
+			Vector3 sphereA = Transform(Transform(a, viewProjectionMatrix), viewportMatrix);
+			Vector3 sphereB = Transform(Transform(b, viewProjectionMatrix), viewportMatrix);
+			Vector3 sphereC = Transform(Transform(c, viewProjectionMatrix), viewportMatrix);
+
+			// ab,bcで線を引く
+			Novice::DrawLine(int(sphereA.x), int(sphereA.y), int(sphereB.x), int(sphereB.y), color);
+			Novice::DrawLine(int(sphereA.x), int(sphereA.y), int(sphereC.x), int(sphereC.y), color);
+		}
+	}
+}
+
+bool IsCollision(const AABB& aabb, const Sphere& sphere, unsigned int& color) {
+	// Vector3 result{};
+
+	Vector3 closePoint{
+	    std::clamp(sphere.center.x, aabb.min.x, aabb.max.x),
+	    std::clamp(sphere.center.y, aabb.min.y, aabb.max.y),
+	    std::clamp(sphere.center.z, aabb.min.z, aabb.max.z),
+	};
+
+	// Subtractが計算しているため"-"は不要
+	float distance = Length(Subtract(closePoint, sphere.center));
+
+	// 距離が半径よりも小さければ衝突
+	if (distance <= sphere.radius) {
 		color = RED;
 	} else {
 		color = WHITE;
@@ -596,7 +647,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Vector3 cameraTranslate{0.0f, 1.9f, -6.49f};
 	Vector3 cameraRotate{0.26f, 0.0f, 0.0f};
 
-	// Sphere sphere = { {0.0f, 0.0f, 0.0f}, 0.5f };
+	Sphere sphere = {
+	    {0.0f, 0.7f, 0.0f},
+        0.5f
+    };
 	Segment segment{
 	    {-0.5f, -0.5f, 0.0f},
         {1.0f,  1.0f,  0.0f}
@@ -615,11 +669,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	AABB aabb1{
 	    .min{-0.5f, -0.5f, -0.5f},
 	    .max{0.0f,  0.0f,  0.0f },
-	};
-
-	AABB aabb2{
-	    .min{0.2f, 0.2f, 0.2f},
-	    .max{1.0f, 1.0f, 1.0f},
 	};
 
 	unsigned int color = WHITE;
@@ -655,18 +704,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		Vector3 start = Transform(Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
 		Vector3 end = Transform(Transform(Add(segment.origin, segment.diff), viewProjectionMatrix), viewportMatrix);
 
-		IsCollision(aabb1, aabb2, color);
+		IsCollision(aabb1, sphere, color);
 
 		ImGui::Begin("Window");
 		ImGui::DragFloat3("CameraTranslate", &cameraTranslate.x, 0.01f);
 		ImGui::DragFloat3("Segment.diff", &cameraRotate.x, 0.01f);
 		ImGui::End();
 
+		ImGui::Begin("Window");
+		ImGui::DragFloat3("SpherePos", &sphere.center.x, 0.01f);
+		ImGui::DragFloat("SphereRadius", &sphere.radius, 0.01f);
+		ImGui::End();
+
 		ImGui::Begin("AABB");
 		ImGui::DragFloat3("AABB1.min", &aabb1.min.x, 0.01f);
 		ImGui::DragFloat3("AABB1.max", &aabb1.max.x, 0.01f);
-		ImGui::DragFloat3("AABB2.min", &aabb2.min.x, 0.01f);
-		ImGui::DragFloat3("AABB2.max", &aabb2.max.x, 0.01f);
 
 		ImGui::End();
 
@@ -680,7 +732,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 		DrawAABB(aabb1, viewProjectionMatrix, viewportMatrix, color);
-		DrawAABB(aabb2, viewProjectionMatrix, viewportMatrix, WHITE);
+		DrawSphere(sphere, viewProjectionMatrix, viewportMatrix, WHITE);
 
 		///
 		/// ↑描画処理ここまで
