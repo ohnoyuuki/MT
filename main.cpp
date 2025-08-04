@@ -515,58 +515,76 @@ void DrawAABB(const AABB& aabb, const Matrix4x4& viewProjectMatrix, const Matrix
 	}
 }
 
-void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	const uint32_t kSubdivision = 16;
-	const float kLonEvery = 2.0f * std::numbers::pi_v<float> / float(kSubdivision); // 経度分割1つ分の角度
-	const float kLatEvery = std::numbers::pi_v<float> / float(kSubdivision);        // 緯度分割1つ分の角度
-	// 緯度の方向に分割 -0/2 - 0/2
-	for (uint32_t latIndex = 0; latIndex < kSubdivision; latIndex++) {
-		float lat = -std::numbers::pi_v<float> / 2.0f + kLatEvery * latIndex; // 現在の緯度
-		// 緯度の方向に分割 0 - 2
-		for (uint32_t lonIndex = 0; lonIndex < kSubdivision; lonIndex++) {
-			float lon = lonIndex * kLonEvery; // 現在の緯度
-			// world座標系でのa,b,cを求める
-			// Vector3 a, b, c;
-			Vector3 a = {sphere.center.x + sphere.radius * cosf(lat) * cosf(lon), sphere.center.y + sphere.radius * sinf(lat), sphere.center.z + sphere.radius * cosf(lat) * sinf(lon)};
+////最近接点
+Vector3 ClosestPoint(const Vector3& point, const Segment& line) {
+	Vector3 closesPoint = {};
+	Vector3 segmentLine = {line.diff.x, line.diff.y, line.diff.z};
+	Vector3 Point = {point.x - line.origin.x, point.y - line.origin.y, point.z - line.origin.z};
+	float t = (segmentLine.x * Point.x + segmentLine.y * Point.y + segmentLine.z * Point.z) / (segmentLine.x * segmentLine.x + segmentLine.y * segmentLine.y + segmentLine.z * segmentLine.z);
 
-			Vector3 b = {
-			    sphere.center.x + sphere.radius * cosf(lat + kLatEvery) * cosf(lon), sphere.center.y + sphere.radius * sinf(lat + kLatEvery),
-			    sphere.center.z + sphere.radius * cosf(lat + kLatEvery) * sinf(lon)};
+	closesPoint.x = t * segmentLine.x + line.origin.x;
+	closesPoint.y = t * segmentLine.y + line.origin.y;
+	closesPoint.z = t * segmentLine.z + line.origin.z;
 
-			Vector3 c = {
-			    sphere.center.x + sphere.radius * cosf(lat) * cosf(lon + kLonEvery), sphere.center.y + sphere.radius * sinf(lat), sphere.center.z + sphere.radius * cosf(lat) * sinf(lon + kLonEvery)};
-
-			// a,b,cをScreen座標系まで変換
-			Vector3 sphereA = Transform(Transform(a, viewProjectionMatrix), viewportMatrix);
-			Vector3 sphereB = Transform(Transform(b, viewProjectionMatrix), viewportMatrix);
-			Vector3 sphereC = Transform(Transform(c, viewProjectionMatrix), viewportMatrix);
-
-			// ab,bcで線を引く
-			Novice::DrawLine(int(sphereA.x), int(sphereA.y), int(sphereB.x), int(sphereB.y), color);
-			Novice::DrawLine(int(sphereA.x), int(sphereA.y), int(sphereC.x), int(sphereC.y), color);
-		}
-	}
+	return closesPoint;
 }
 
-bool IsCollision(const AABB& aabb, const Sphere& sphere, unsigned int& color) {
+bool IsCollision(const AABB& aabb, const Segment& segment, unsigned int& color) {
 	// Vector3 result{};
 
-	Vector3 closePoint{
-	    std::clamp(sphere.center.x, aabb.min.x, aabb.max.x),
-	    std::clamp(sphere.center.y, aabb.min.y, aabb.max.y),
-	    std::clamp(sphere.center.z, aabb.min.z, aabb.max.z),
+	Vector3 pointA = segment.origin;
+	Vector3 pointB = Add(segment.origin, segment.diff);
+
+	Vector3 Min{
+	    min(pointA.x, pointB.x),
+	    min(pointA.y, pointB.y),
+	    min(pointA.z, pointB.z),
 	};
 
-	// Subtractが計算しているため"-"は不要
-	float distance = Length(Subtract(closePoint, sphere.center));
+	Vector3 Max{
+	    max(pointA.x, pointB.x),
+	    max(pointA.y, pointB.y),
+	    max(pointA.z, pointB.z),
+	};
 
-	// 距離が半径よりも小さければ衝突
-	if (distance <= sphere.radius) {
-		color = RED;
-	} else {
+	if (Max.x < aabb.min.x || Min.x > aabb.max.x || Max.y < aabb.min.y || Min.y > aabb.max.y || Max.z < aabb.min.z || Min.z > aabb.max.z) {
 		color = WHITE;
+		return false;
 	}
-	return false;
+
+	Vector3 crossLine = segment.diff;
+	Vector3 inLine{
+	    crossLine.x != 0.0f ? 1.0f / crossLine.x : std::numeric_limits<float>::infinity(),
+	    crossLine.y != 0.0f ? 1.0f / crossLine.y : std::numeric_limits<float>::infinity(),
+	    crossLine.z != 0.0f ? 1.0f / crossLine.z : std::numeric_limits<float>::infinity(),
+	};
+
+	float nMin = 0.0f;
+	float nMax = 1.0f;
+
+	for (int i = 0; i < 3; i++) {
+		float origin = (&segment.origin.x)[i];
+		float lineD = (&inLine.x)[i];
+		float minPoint = (&aabb.min.x)[i];
+		float maxPoint = (&aabb.max.x)[i];
+
+		float pointT1 = (minPoint - origin) * lineD;
+		float pointT2 = (maxPoint - origin) * lineD;
+
+		if (pointT1 > pointT2)
+			std::swap(pointT1, pointT2);
+
+		nMin = max(nMin, pointT1);
+		nMax = min(nMax, pointT2);
+
+		if (nMin > nMax) {
+			color = WHITE;
+			return false;
+		}
+	}
+
+	color = RED;
+	return true;
 }
 
 void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix) {
@@ -652,8 +670,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         0.5f
     };
 	Segment segment{
-	    {-0.5f, -0.5f, 0.0f},
-        {1.0f,  1.0f,  0.0f}
+	    {-0.7f, -0.3f, 0.0f},
+        {2.0f,  -0.5f, 0.0f}
     };
 	Vector3 point{-0.5f, 0.6f, 0.0f};
 	Vector3 origin{0.0f, 0.0f, 0.0f};
@@ -668,7 +686,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	AABB aabb1{
 	    .min{-0.5f, -0.5f, -0.5f},
-	    .max{0.0f,  0.0f,  0.0f },
+	    .max{0.5f,  0.5f,  0.5f },
 	};
 
 	unsigned int color = WHITE;
@@ -696,7 +714,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
 		// Vector3 project = Project(Subtract(point, segment.origin), segment.diff);
-		// Vector3 clossPoint = ClosestPoint(point, segment);
+		Vector3 clossPoint = ClosestPoint(point, segment);
 
 		/* Sphere pointSphere = { point,0.01f };
 		 Sphere closetPointSphere = { clossPoint,0.01f };*/
@@ -704,22 +722,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		Vector3 start = Transform(Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
 		Vector3 end = Transform(Transform(Add(segment.origin, segment.diff), viewProjectionMatrix), viewportMatrix);
 
-		IsCollision(aabb1, sphere, color);
+		IsCollision(aabb1, segment, color);
 
-		ImGui::Begin("Window");
+		ImGui::Begin("Windows");
 		ImGui::DragFloat3("CameraTranslate", &cameraTranslate.x, 0.01f);
-		ImGui::DragFloat3("Segment.diff", &cameraRotate.x, 0.01f);
-		ImGui::End();
-
-		ImGui::Begin("Window");
-		ImGui::DragFloat3("SpherePos", &sphere.center.x, 0.01f);
-		ImGui::DragFloat("SphereRadius", &sphere.radius, 0.01f);
+		ImGui::DragFloat3("CameraRotate", &cameraRotate.x, 0.01f);
 		ImGui::End();
 
 		ImGui::Begin("AABB");
 		ImGui::DragFloat3("AABB1.min", &aabb1.min.x, 0.01f);
 		ImGui::DragFloat3("AABB1.max", &aabb1.max.x, 0.01f);
+		ImGui::End();
 
+		ImGui::Begin("Segment");
+		ImGui::DragFloat3("Segment.origin", &segment.origin.x, 0.01f);
+		ImGui::DragFloat3("Segment.diff", &segment.diff.x, 0.01f);
 		ImGui::End();
 
 		///
@@ -732,7 +749,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 		DrawAABB(aabb1, viewProjectionMatrix, viewportMatrix, color);
-		DrawSphere(sphere, viewProjectionMatrix, viewportMatrix, WHITE);
+		Novice::DrawLine(static_cast<int>(start.x), static_cast<int>(start.y), static_cast<int>(end.x), static_cast<int>(end.y), WHITE); // colorの変数を確認する
 
 		///
 		/// ↑描画処理ここまで
