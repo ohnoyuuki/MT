@@ -385,29 +385,7 @@ void DrawSphere(const Sphere& sphere, Matrix4x4& viewProjectionMatrix, Matrix4x4
 	}
 }
 
-Vector3 Lerp(const Vector3& v1, const Vector3& v2, float t) { return {v1.x * (1.0f - t) + v2.x * t, v1.y * (1.0f - t) + v2.y * t, v1.z * (1.0f - t) + v2.z * t}; }
-
-void DrawBezier(const Vector3& controlPoint0, const Vector3& controlPoint1, const Vector3& controlPoint2, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-
-	Vector3 P0 = Transform(Transform(controlPoint0, viewProjectionMatrix), viewportMatrix);
-	Vector3 P1 = Transform(Transform(controlPoint1, viewProjectionMatrix), viewportMatrix);
-	Vector3 P2 = Transform(Transform(controlPoint2, viewProjectionMatrix), viewportMatrix);
-
-	for (int index = 0; index < 32; index++) {
-		float t = float(index) / 32;
-		float nextT = float(index + 1) / 32;
-
-		Vector3 p0p1 = Lerp(P0, P1, t);
-		Vector3 p1p2 = Lerp(P1, P2, t);
-		Vector3 p = Lerp(p0p1, p1p2, t);
-
-		Vector3 nextP0p1 = Lerp(P0, P1, nextT);
-		Vector3 nextP1p2 = Lerp(P1, P2, nextT);
-		Vector3 nextP = Lerp(nextP0p1, nextP1p2, nextT);
-
-		Novice::DrawLine(static_cast<int>(p.x), static_cast<int>(p.y), static_cast<int>(nextP.x), static_cast<int>(nextP.y), color);
-	}
-}
+Vector3 GetTranslateFromMatrix(const Matrix4x4& mat) { return {mat.m[3][0], mat.m[3][1], mat.m[3][2]}; }
 
 // Windowsアプリでのエントリーポイント(main関数)
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
@@ -421,13 +399,25 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	const int kWindowWidth = 1280;
 	const int kWindowHeight = 720;
 
-	Vector3 controlPoints[3] = {
-	    {-0.8f, 0.58f, 1.0f },
-	    {1.76f, 1.0f,  -0.3f},
-	    {0.94f, -0.7f, 2.3f },
+	Vector3 translates[3] = {
+	    {0.2f, 1.0f, 0.0f},
+	    {0.4f, 0.0f, 0.0f},
+	    {0.3f, 0.0f, 0.0f},
 	};
 
-	uint32_t color = WHITE;
+	Vector3 rotates[3] = {
+	    {0.0f, 0.0f, -6.8f},
+	    {0.0f, 0.0f, -1.4f},
+	    {0.0f, 0.0f, 0.0f },
+	};
+
+	Vector3 scales[3] = {
+	    {1.0f, 1.0f, 1.0f},
+	    {1.0f, 1.0f, 1.0f},
+	    {1.0f, 1.0f, 1.0f},
+	};
+
+	Sphere spheres[3];
 
 	// キー入力結果を受け取る箱
 	char keys[256] = {0};
@@ -446,22 +436,55 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓更新処理ここから
 		///
 
+		// world行列
 		Matrix4x4 cameraMatrix = MakeAffineMatrix({1.0f, 1.0f, 1.0f}, cameraRotate, cameraTranslate);
 		Matrix4x4 viewMatrix = Inverse(cameraMatrix);
 		Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(0.45f, float(kWindowWidth) / float(kWindowHeight), 0.1f, 100.0f);
 		Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
-		ImGui::Begin("window");
+		Matrix4x4 shoulderWorldMatrix = MakeAffineMatrix(scales[0], rotates[0], translates[0]);
 
+		Matrix4x4 elbowLocalMatrix = MakeAffineMatrix(scales[1], rotates[1], translates[1]);
+		Matrix4x4 elbowWorldMatrix = Multiply(elbowLocalMatrix, shoulderWorldMatrix);
+
+		Matrix4x4 handLocalMAtrix = MakeAffineMatrix(scales[2], rotates[2], translates[2]);
+		Matrix4x4 handWorldMatrix = Multiply(handLocalMAtrix, elbowWorldMatrix);
+
+		spheres[0] = {GetTranslateFromMatrix(shoulderWorldMatrix), 0.1f};
+		spheres[1] = {GetTranslateFromMatrix(elbowWorldMatrix), 0.1f};
+		spheres[2] = {GetTranslateFromMatrix(handWorldMatrix), 0.1f};
+
+		ImGui::Begin("window");
 		ImGui::DragFloat3("Camera.Translate", &cameraTranslate.x, 0.01f);
 		ImGui::DragFloat3("camera.Rotate", &cameraRotate.x, 0.01f);
 
-		ImGui::DragFloat3("controlPoints0", &controlPoints[0].x, 0.01f);
-		ImGui::DragFloat3("controlPoints1", &controlPoints[1].x, 0.01f);
-		ImGui::DragFloat3("controlPoints2", &controlPoints[2].x, 0.01f);
+		if (ImGui::TreeNode("Shoulder")) {
+			ImGui::DragFloat3("translate[0]", &translates[0].x, 0.01f);
+			ImGui::DragFloat3("rotate[0]", &rotates[0].x, 0.01f);
+			ImGui::DragFloat3("scale[0]", &scales[0].x, 0.01f);
+			ImGui::TreePop();
+		}
+
+		if (ImGui::TreeNode("Elbow")) {
+			ImGui::DragFloat3("translate[1]", &translates[1].x, 0.01f);
+			ImGui::DragFloat3("rotate[1]", &rotates[1].x, 0.01f);
+			ImGui::DragFloat3("scale[1]", &scales[1].x, 0.01f);
+			ImGui::TreePop();
+		}
+
+		if (ImGui::TreeNode("Hand")) {
+			ImGui::DragFloat3("translate[2]", &translates[2].x, 0.01f);
+			ImGui::DragFloat3("rotate[2]", &rotates[2].x, 0.01f);
+			ImGui::DragFloat3("scale[2]", &scales[2].x, 0.01f);
+			ImGui::TreePop();
+		}
 
 		ImGui::End();
+
+		Vector3 shoulderScreen = Transform(Transform(spheres[0].center, viewProjectionMatrix), viewportMatrix);
+		Vector3 elbowScreen = Transform(Transform(spheres[1].center, viewProjectionMatrix), viewportMatrix);
+		Vector3 handScreen = Transform(Transform(spheres[2].center, viewProjectionMatrix), viewportMatrix);
 
 		///
 		/// ↑更新処理ここまで
@@ -473,16 +496,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 
-		DrawBezier(controlPoints[0], controlPoints[1], controlPoints[2], viewProjectionMatrix, viewportMatrix, color);
+		DrawSphere(spheres[0], viewProjectionMatrix, viewportMatrix, RED);
+		DrawSphere(spheres[1], viewProjectionMatrix, viewportMatrix, GREEN);
+		DrawSphere(spheres[2], viewProjectionMatrix, viewportMatrix, BLUE);
 
-		Sphere P0{controlPoints[0], 0.01f};
+		Novice::DrawLine(static_cast<int>(shoulderScreen.x), static_cast<int>(shoulderScreen.y), static_cast<int>(elbowScreen.x), static_cast<int>(elbowScreen.y), WHITE);
 
-		Sphere P1{controlPoints[1], 0.01f};
-
-		Sphere P2{controlPoints[2], 0.01f};
-		DrawSphere(P0, viewProjectionMatrix, viewportMatrix, BLACK);
-		DrawSphere(P1, viewProjectionMatrix, viewportMatrix, BLACK);
-		DrawSphere(P2, viewProjectionMatrix, viewportMatrix, BLACK);
+		Novice::DrawLine(static_cast<int>(elbowScreen.x), static_cast<int>(elbowScreen.y), static_cast<int>(handScreen.x), static_cast<int>(handScreen.y), WHITE);
 
 		///
 		/// ↑描画処理ここまで
