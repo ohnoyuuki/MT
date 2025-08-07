@@ -1,13 +1,16 @@
-const char kWindowTitle[] = "LE2D_08_オオノ_ユウキ";
 #include <Novice.h>
 #include <cassert>
 #include <cmath>
 #include <imgui.h>
 #include <numbers>
 
+const char kWindowTitle[] = "LE2D_08_オオノ_ユウキ";
+
 
 struct Vector3 {
-	float x, y, z;
+	float x;
+	float y;
+	float z;
 };
 
 struct Matrix4x4 {
@@ -456,15 +459,6 @@ Vector3 Cross(const Vector3& v1, Vector3& v2) {
 	return cross;
 }
 
-// Vector3 Project(const Vector3& v1, const Vector3& v2)
-//{
-//     Vector3 project{};
-//
-//     project =
-//     { v1.x - v2.x,v1.y - v2.y,v1.z - v2.z };
-//
-//     return project;
-// }
 
 void DrawAABB(const AABB& aabb, const Matrix4x4& viewProjectMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
 	// 頂点
