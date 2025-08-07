@@ -11,9 +11,10 @@
 const char kWindowTitle[] = "LE2D_08_オオノ_ユウキ";
 
 struct Vector3 {
-	float x, y, z;
+	float x;
+	float y;
+	float z;
 };
-
 struct Matrix4x4 {
 	float m[4][4];
 };
