@@ -11,9 +11,10 @@
 const char kWindowTitle[] = "LE2D_08_オオノ_ユウキ";
 
 struct Vector3 {
-	float x, y, z;
+	float x;
+	float y;
+	float z;
 };
-
 struct Matrix4x4 {
 	float m[4][4];
 };
@@ -48,8 +49,6 @@ struct AABB {
 	Vector3 max;
 };
 
-// static const int kColumnWidth = 60;
-// static const int kRowHeight = 20;
 
 // 加算
 Vector3 Add(const Vector3& v1, const Vector3& v2) {
