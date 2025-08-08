@@ -1,12 +1,11 @@
 #include <Novice.h>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <imgui.h>
 #include <numbers>
-#include<algorithm>
 #define _USE_DEFINES_MATH
 #define NOMINMAX
-
 
 const char kWindowTitle[] = "LE2D_08_オオノ_ユウキ";
 
@@ -48,7 +47,6 @@ struct AABB {
 	Vector3 min;
 	Vector3 max;
 };
-
 
 // 加算
 Vector3 Add(const Vector3& v1, const Vector3& v2) {
@@ -694,11 +692,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// ViewporMatrixを作る
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
-		// Vector3 project = Project(Subtract(point, segment.origin), segment.diff);
-		// Vector3 clossPoint = ClosestPoint(point, segment);
-
-		/* Sphere pointSphere = { point,0.01f };
-		 Sphere closetPointSphere = { clossPoint,0.01f };*/
 
 		Vector3 start = Transform(Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
 		Vector3 end = Transform(Transform(Add(segment.origin, segment.diff), viewProjectionMatrix), viewportMatrix);
